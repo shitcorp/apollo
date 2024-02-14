@@ -3,6 +3,7 @@ package bot
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/disgoorg/disgo"
@@ -10,8 +11,6 @@ import (
 	"github.com/disgoorg/disgo/cache"
 	"github.com/disgoorg/disgo/events"
 	"github.com/disgoorg/disgo/gateway"
-	"github.com/disgoorg/disgo/handler"
-	"github.com/disgoorg/disgo/rest"
 	"github.com/disgoorg/disgolink/v3/disgolink"
 	"github.com/disgoorg/disgolink/v3/lavalink"
 	"github.com/disgoorg/snowflake/v2"
@@ -62,7 +61,7 @@ func NewMusicBot(token string) (*MusicBot, error) {
 			),
 		),
 		// Register the command handler
-		bot.WithEventListeners(musicBot.commandHandler()),
+		bot.WithEventListeners(musicBot.buildCommandHandler()),
 		// Register the ready event listener
 		bot.WithEventListenerFunc(func(event *events.Ready) {
 			logger.Info("Bot is ready")
@@ -94,18 +93,19 @@ func NewMusicBot(token string) (*MusicBot, error) {
 }
 
 func (b *MusicBot) onPlayerPause(player disgolink.Player, event lavalink.PlayerPauseEvent) {
-	fmt.Printf("onPlayerPause: %v\n", event)
+	logger.Debug("lavalink player paused", slog.Any("event", event))
 }
 
 func (b *MusicBot) onPlayerResume(player disgolink.Player, event lavalink.PlayerResumeEvent) {
-	fmt.Printf("onPlayerResume: %v\n", event)
+	logger.Debug("lavalink player resumed", slog.Any("event", event))
 }
 
 func (b *MusicBot) onTrackStart(player disgolink.Player, event lavalink.TrackStartEvent) {
-	fmt.Printf("onTrackStart: %v\n", event)
+	logger.Debug("lavalink track started", slog.Any("event", event))
 }
 
 func (b *MusicBot) onTrackEnd(player disgolink.Player, event lavalink.TrackEndEvent) {
+	logger.Debug("lavalink track ended", slog.Any("event", event))
 	if !event.Reason.MayStartNext() {
 		return
 	}
@@ -132,23 +132,24 @@ func (b *MusicBot) onTrackEnd(player disgolink.Player, event lavalink.TrackEndEv
 		return
 	}
 	if err := player.Update(context.TODO(), lavalink.WithTrack(nextTrack)); err != nil {
-		logger.Error("Failed to play next track: ", err)
+		logger.Error("Failed to play next track in queue", eris.Wrap(err, "failed to play next track in queue"))
 	}
 }
 
 func (b *MusicBot) onTrackException(player disgolink.Player, event lavalink.TrackExceptionEvent) {
-	fmt.Printf("onTrackException: %v\n", event)
+	logger.Error("lavalink track exception", slog.Any("event", event))
 }
 
 func (b *MusicBot) onTrackStuck(player disgolink.Player, event lavalink.TrackStuckEvent) {
-	fmt.Printf("onTrackStuck: %v\n", event)
+	logger.Error("lavalink track stuck", slog.Any("event", event))
 }
 
 func (b *MusicBot) onWebSocketClosed(player disgolink.Player, event lavalink.WebSocketClosedEvent) {
-	fmt.Printf("onWebSocketClosed: %v\n", event)
+	logger.Error("lavalink websocket closed", slog.Any("event", event))
 }
 
 func (b *MusicBot) onVoiceStateUpdate(event *events.GuildVoiceStateUpdate) {
+	// only handle bot voice state updates
 	if event.VoiceState.UserID != b.Client.ApplicationID() {
 		return
 	}
@@ -162,6 +163,7 @@ func (b *MusicBot) onVoiceServerUpdate(event *events.VoiceServerUpdate) {
 	b.Lavalink.OnVoiceServerUpdate(context.TODO(), event.GuildID, event.Token, *event.Endpoint)
 }
 
+// handle starting the bot
 func (b *MusicBot) Start(ctx context.Context) error {
 	logger.Info("Starting Apollo")
 
@@ -200,20 +202,7 @@ func (b *MusicBot) Start(ctx context.Context) error {
 	return nil
 }
 
-func (b *MusicBot) Sync(ctx context.Context, guids []snowflake.ID) error {
-	if len(guids) == 0 {
-		logger.Info("Syncing commands for all guilds")
-	} else {
-		logger.Info("Syncing commands for specified guilds")
-	}
-
-	if err := handler.SyncCommands(b.Client, commands, guids, rest.WithCtx(ctx)); err != nil {
-		return eris.Wrap(err, "error while syncing commands")
-	}
-
-	return nil
-}
-
+// a clean shutdown of the bot
 func (b *MusicBot) Close(ctx context.Context) {
 	// close gateway connection
 	b.Client.Close(ctx)
