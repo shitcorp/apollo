@@ -64,6 +64,39 @@ var slashCommands = []discord.ApplicationCommandCreate{
 			},
 		},
 	},
+	discord.SlashCommandCreate{
+		Name:        "now-playing",
+		Description: "Shows the current playing song",
+	},
+	discord.SlashCommandCreate{
+		Name:        "pause",
+		Description: "Pauses/resumes the current song",
+	},
+	discord.SlashCommandCreate{
+		Name:        "stop",
+		Description: "Stops the current song and stops the player",
+	},
+	discord.SlashCommandCreate{
+		Name:        "disconnect",
+		Description: "Disconnects the player",
+	},
+	discord.SlashCommandCreate{
+		Name:        "volume",
+		Description: "Sets the volume of the player",
+		Options: []discord.ApplicationCommandOption{
+			discord.ApplicationCommandOptionInt{
+				Name:        "volume",
+				Description: "The volume to set",
+				Required:    true,
+				MaxValue:    json.Ptr(1000),
+				MinValue:    json.Ptr(0),
+			},
+		},
+	},
+	discord.SlashCommandCreate{
+		Name:        "shuffle",
+		Description: "Shuffles the current queue",
+	},
 }
 
 var (
@@ -97,6 +130,11 @@ func (b *MusicBot) buildCommandHandler() *handler.Mux {
 	r := handler.New()
 
 	r.Command("/play", cmds.play)
+	r.Command("/now-playing", cmds.nowPlaying)
+	r.Command("/pause", cmds.pause)
+	r.Command("/stop", cmds.stop)
+	r.Command("/disconnect", cmds.disconnect)
+	r.Command("/volume", cmds.volume)
 
 	return r
 }
@@ -180,4 +218,118 @@ func (h CmdHandler) play(event *handler.CommandEvent) error {
 	player := h.musicBot.Lavalink.Player(*event.GuildID())
 
 	return player.Update(context.TODO(), lavalink.WithTrack(*toPlay))
+}
+
+func (h CmdHandler) pause(event *handler.CommandEvent) error {
+	player := h.musicBot.Lavalink.ExistingPlayer(*event.GuildID())
+	if player == nil {
+		return event.CreateMessage(discord.MessageCreate{
+			Content: "No player found",
+		})
+	}
+
+	if err := player.Update(context.TODO(), lavalink.WithPaused(!player.Paused())); err != nil {
+		return event.CreateMessage(discord.MessageCreate{
+			Content: fmt.Sprintf("Error while pausing: `%s`", err),
+		})
+	}
+
+	status := "playing"
+	if player.Paused() {
+		status = "paused"
+	}
+	return event.CreateMessage(discord.MessageCreate{
+		Content: fmt.Sprintf("Player is now %s", status),
+	})
+}
+
+func (h CmdHandler) volume(event *handler.CommandEvent) error {
+	player := h.musicBot.Lavalink.ExistingPlayer(*event.GuildID())
+	if player == nil {
+		return event.CreateMessage(discord.MessageCreate{
+			Content: "No player found",
+		})
+	}
+
+	volume := event.SlashCommandInteractionData().Int("volume")
+	if err := player.Update(context.TODO(), lavalink.WithVolume(volume)); err != nil {
+		return event.CreateMessage(discord.MessageCreate{
+			Content: fmt.Sprintf("Error while setting volume: `%s`", err),
+		})
+	}
+
+	return event.CreateMessage(discord.MessageCreate{
+		Content: fmt.Sprintf("Volume set to `%d`", volume),
+	})
+}
+
+func (h CmdHandler) stop(event *handler.CommandEvent) error {
+	logger.Info("Received /stop command")
+
+	player := h.musicBot.Lavalink.ExistingPlayer(*event.GuildID())
+	if player == nil {
+		return event.CreateMessage(discord.MessageCreate{
+			Content: "No player found",
+		})
+	}
+
+	if err := player.Update(context.TODO(), lavalink.WithNullTrack()); err != nil {
+		return event.CreateMessage(discord.MessageCreate{
+			Content: fmt.Sprintf("Error while stopping: `%s`", err),
+		})
+	}
+
+	return event.CreateMessage(discord.MessageCreate{
+		Content: "Player stopped",
+	})
+}
+
+func (h CmdHandler) disconnect(event *handler.CommandEvent) error {
+	logger.Info("Received /disconnect command")
+
+	player := h.musicBot.Lavalink.ExistingPlayer(*event.GuildID())
+	if player == nil {
+		return event.CreateMessage(discord.MessageCreate{
+			Content: "No player found",
+		})
+	}
+
+	if err := h.musicBot.Client.UpdateVoiceState(context.TODO(), *event.GuildID(), nil, false, false); err != nil {
+		return event.CreateMessage(discord.MessageCreate{
+			Content: fmt.Sprintf("Error while disconnecting: `%s`", err),
+		})
+	}
+
+	return event.CreateMessage(discord.MessageCreate{
+		Content: "Player disconnected",
+	})
+}
+
+func (h CmdHandler) nowPlaying(event *handler.CommandEvent) error {
+	logger.Info("Received /now-playing command")
+
+	player := h.musicBot.Lavalink.ExistingPlayer(*event.GuildID())
+	if player == nil {
+		return event.CreateMessage(discord.MessageCreate{
+			Content: "No player found",
+		})
+	}
+
+	track := player.Track()
+	if track == nil {
+		return event.CreateMessage(discord.MessageCreate{
+			Content: "No track found",
+		})
+	}
+
+	return event.CreateMessage(discord.MessageCreate{
+		Content: fmt.Sprintf("Now playing: [`%s`](<%s>)\n\n %s / %s", track.Info.Title, *track.Info.URI, formatPosition(player.Position()), formatPosition(track.Info.Length)),
+	})
+}
+
+func formatPosition(position lavalink.Duration) string {
+	if position == 0 {
+		return "0:00"
+	}
+	return fmt.Sprintf("%d:%02d", position.Minutes(), position.SecondsPart())
 }

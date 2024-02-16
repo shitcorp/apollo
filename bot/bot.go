@@ -145,7 +145,7 @@ func (b *MusicBot) onTrackStuck(player disgolink.Player, event lavalink.TrackStu
 }
 
 func (b *MusicBot) onWebSocketClosed(player disgolink.Player, event lavalink.WebSocketClosedEvent) {
-	logger.Error("lavalink websocket closed", slog.Any("event", event))
+	logger.Info("lavalink websocket closed", slog.Any("event", event))
 }
 
 func (b *MusicBot) onVoiceStateUpdate(event *events.GuildVoiceStateUpdate) {
@@ -153,7 +153,10 @@ func (b *MusicBot) onVoiceStateUpdate(event *events.GuildVoiceStateUpdate) {
 	if event.VoiceState.UserID != b.Client.ApplicationID() {
 		return
 	}
+	// update lavalink with the voice state update
 	b.Lavalink.OnVoiceStateUpdate(context.TODO(), event.VoiceState.GuildID, event.VoiceState.ChannelID, event.VoiceState.SessionID)
+
+	// if the bot left the voice channel, delete the queue
 	if event.VoiceState.ChannelID == nil {
 		b.Queues.Delete(event.VoiceState.GuildID)
 	}
