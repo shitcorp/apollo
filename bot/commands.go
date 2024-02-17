@@ -97,6 +97,21 @@ var slashCommands = []discord.ApplicationCommandCreate{
 		Name:        "shuffle",
 		Description: "Shuffles the current queue",
 	},
+	discord.SlashCommandCreate{
+		Name:        "queue",
+		Description: "Displays the current queue",
+	},
+	discord.SlashCommandCreate{
+		Name:        "skip",
+		Description: "Skips the current song",
+		Options: []discord.ApplicationCommandOption{
+			discord.ApplicationCommandOptionInt{
+				Name:        "amount",
+				Description: "The amount of songs to skip",
+				Required:    false,
+			},
+		},
+	},
 }
 
 var (
@@ -135,6 +150,9 @@ func (b *MusicBot) buildCommandHandler() *handler.Mux {
 	r.Command("/stop", cmds.stop)
 	r.Command("/disconnect", cmds.disconnect)
 	r.Command("/volume", cmds.volume)
+	r.Command("/shuffle", cmds.shuffle)
+	r.Command("/queue", cmds.queue)
+	r.Command("/skip", cmds.skip)
 
 	return r
 }
@@ -166,7 +184,7 @@ func (h CmdHandler) play(event *handler.CommandEvent) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	var toPlay *lavalink.Track
+	var toPlay []lavalink.Track
 	bestNode := h.musicBot.Lavalink.BestNode()
 
 	// results, err := bestNode.LoadTracks(ctx, identifier)
@@ -176,22 +194,25 @@ func (h CmdHandler) play(event *handler.CommandEvent) error {
 
 	bestNode.LoadTracksHandler(ctx, identifier, disgolink.NewResultHandler(
 		func(track lavalink.Track) {
-			_, _ = h.musicBot.Client.Rest().UpdateInteractionResponse(event.ApplicationID(), event.Token(), discord.MessageUpdate{
-				Content: json.Ptr(fmt.Sprintf("Loaded track: [`%s`](<%s>)", track.Info.Title, *track.Info.URI)),
-			})
-			toPlay = &track
+			// _, _ = h.musicBot.Client.Rest().UpdateInteractionResponse(event.ApplicationID(), event.Token(), discord.MessageUpdate{
+			// 	Content: json.Ptr(fmt.Sprintf("Loaded track: [`%s`](<%s>)", track.Info.Title, *track.Info.URI)),
+			// })
+			toPlay = append(toPlay, track)
 		},
 		func(playlist lavalink.Playlist) {
-			_, _ = h.musicBot.Client.Rest().UpdateInteractionResponse(event.ApplicationID(), event.Token(), discord.MessageUpdate{
-				Content: json.Ptr(fmt.Sprintf("Loaded playlist: `%s` with `%d` tracks", playlist.Info.Name, len(playlist.Tracks))),
-			})
-			toPlay = &playlist.Tracks[0]
+			// _, _ = h.musicBot.Client.Rest().UpdateInteractionResponse(event.ApplicationID(), event.Token(), discord.MessageUpdate{
+			// 	Content: json.Ptr(fmt.Sprintf("Loaded playlist: `%s` with `%d` tracks", playlist.Info.Name, len(playlist.Tracks))),
+			// })
+
+			toPlay = append(toPlay, playlist.Tracks...)
 		},
 		func(tracks []lavalink.Track) {
-			_, _ = h.musicBot.Client.Rest().UpdateInteractionResponse(event.ApplicationID(), event.Token(), discord.MessageUpdate{
-				Content: json.Ptr(fmt.Sprintf("Loaded search result: [`%s`](<%s>)", tracks[0].Info.Title, *tracks[0].Info.URI)),
-			})
-			toPlay = &tracks[0]
+			// _, _ = h.musicBot.Client.Rest().UpdateInteractionResponse(event.ApplicationID(), event.Token(), discord.MessageUpdate{
+			// 	Content: json.Ptr(fmt.Sprintf("Loaded search result: [`%s`](<%s>)", tracks[0].Info.Title, *tracks[0].Info.URI)),
+			// })
+
+			// use first search result
+			toPlay = append(toPlay, tracks[0])
 		},
 		func() {
 			_, _ = h.musicBot.Client.Rest().UpdateInteractionResponse(event.ApplicationID(), event.Token(), discord.MessageUpdate{
@@ -204,9 +225,9 @@ func (h CmdHandler) play(event *handler.CommandEvent) error {
 			})
 		},
 	))
-	logger.Info("toPlay", slog.String("title", toPlay.Info.Title), slog.String("uri", *toPlay.Info.URI))
 
-	if toPlay == nil {
+	// check if there are any tracks to play
+	if len(toPlay) == 0 {
 		return nil
 	}
 
@@ -215,9 +236,118 @@ func (h CmdHandler) play(event *handler.CommandEvent) error {
 		return err
 	}
 
+	// get current player
 	player := h.musicBot.Lavalink.Player(*event.GuildID())
 
-	return player.Update(context.TODO(), lavalink.WithTrack(*toPlay))
+	// get current track
+	track := player.Track()
+
+	var msg = ""
+
+	// if there is no track playing, play first track
+	if track == nil {
+
+		track = &toPlay[0]
+		// remove first track from queue
+		toPlay = toPlay[1:]
+
+		// play selected track
+		err := player.Update(context.TODO(), lavalink.WithTrack(*track))
+		if err != nil {
+			logger.Error("Failed to play track", eris.Wrap(err, "failed to play track"))
+
+			// notify user about error
+			return event.CreateMessage(discord.MessageCreate{
+				Content: fmt.Sprintf("Error while playing: `%s`", track.Info.Title),
+			})
+		}
+
+		msg = fmt.Sprintf("Now playing: [`%s`](<%s>)", track.Info.Title, *track.Info.URI)
+		logger.Info("Now playing track", slog.String("title", track.Info.Title), slog.String("uri", *track.Info.URI))
+
+	}
+
+	// add track(s) to queue
+	queue := h.musicBot.Queues.Get(*event.GuildID())
+	queue.Add(toPlay...)
+
+	switch len(toPlay) {
+	case 0:
+		_, err := h.musicBot.Client.Rest().UpdateInteractionResponse(event.ApplicationID(), event.Token(), discord.MessageUpdate{
+			Content: &msg,
+		})
+		return err
+	case 1:
+		msg += fmt.Sprintf("\nAdded track to queue: [`%s`](<%s>)", toPlay[0].Info.Title, *toPlay[0].Info.URI)
+		logger.Info("Added track to queue", slog.String("title", toPlay[0].Info.Title), slog.String("uri", *toPlay[0].Info.URI))
+	default:
+		msg += fmt.Sprintf("\nAdded `%d` tracks to queue", len(toPlay))
+		logger.Info("Added tracks to queue", slog.Int("count", len(toPlay)))
+	}
+
+	_, err := h.musicBot.Client.Rest().UpdateInteractionResponse(event.ApplicationID(), event.Token(), discord.MessageUpdate{
+		Content: &msg,
+	})
+	return err
+}
+
+func (h CmdHandler) queue(event *handler.CommandEvent) error {
+	queue := h.musicBot.Queues.Get(*event.GuildID())
+	if queue == nil {
+		return event.CreateMessage(discord.MessageCreate{
+			Content: "No player found",
+		})
+	}
+
+	if len(queue.Tracks) == 0 {
+		return event.CreateMessage(discord.MessageCreate{
+			Content: "No tracks in queue",
+		})
+	}
+
+	var tracks string
+	for i, track := range queue.Tracks {
+		tracks += fmt.Sprintf("%d. [`%s`](<%s>)\n", i+1, track.Info.Title, *track.Info.URI)
+	}
+
+	return event.CreateMessage(discord.MessageCreate{
+		Content: fmt.Sprintf("Queue `%s`:\n%s", queue.Type, tracks),
+	})
+}
+
+func (h CmdHandler) skip(event *handler.CommandEvent) error {
+	logger.Info("Received /skip command")
+
+	player := h.musicBot.Lavalink.ExistingPlayer(*event.GuildID())
+	queue := h.musicBot.Queues.Get(*event.GuildID())
+	if player == nil || queue == nil {
+		return event.CreateMessage(discord.MessageCreate{
+			Content: "No player found",
+		})
+	}
+
+	amount, ok := event.SlashCommandInteractionData().OptInt("amount")
+	if !ok {
+		amount = 1
+	}
+	logger.Info("Skipping tracks", slog.Int("amount", amount))
+
+	track, ok := queue.Skip(amount)
+	if !ok {
+		return event.CreateMessage(discord.MessageCreate{
+			Content: "No tracks in queue",
+		})
+	}
+
+	if err := player.Update(context.TODO(), lavalink.WithTrack(track)); err != nil {
+		return event.CreateMessage(discord.MessageCreate{
+			Content: fmt.Sprintf("Error while skipping track: `%s`", err),
+		})
+	}
+
+	return event.CreateMessage(discord.MessageCreate{
+		Content: "Skipped track",
+	})
 }
 
 func (h CmdHandler) pause(event *handler.CommandEvent) error {
@@ -260,6 +390,20 @@ func (h CmdHandler) volume(event *handler.CommandEvent) error {
 
 	return event.CreateMessage(discord.MessageCreate{
 		Content: fmt.Sprintf("Volume set to `%d`", volume),
+	})
+}
+
+func (h CmdHandler) shuffle(event *handler.CommandEvent) error {
+	queue := h.musicBot.Queues.Get(*event.GuildID())
+	if queue == nil {
+		return event.CreateMessage(discord.MessageCreate{
+			Content: "No player found",
+		})
+	}
+
+	queue.Shuffle()
+	return event.CreateMessage(discord.MessageCreate{
+		Content: "Queue shuffled",
 	})
 }
 
