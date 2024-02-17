@@ -60,8 +60,13 @@ func (q *Queue) Skip(amount int) (lavalink.Track, bool) {
 	if amount > len(q.Tracks) {
 		amount = len(q.Tracks)
 	}
+
+	// get next track to play
+	track := q.Tracks[amount-1]
+
+	// shift queue
 	q.Tracks = q.Tracks[amount:]
-	return q.Tracks[0], true
+	return track, true
 }
 
 func (q *Queue) Clear() {
