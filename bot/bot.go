@@ -105,7 +105,7 @@ func (b *MusicBot) onTrackStart(player disgolink.Player, event lavalink.TrackSta
 }
 
 func (b *MusicBot) onTrackEnd(player disgolink.Player, event lavalink.TrackEndEvent) {
-	logger.Debug("lavalink track ended", slog.Any("event", event))
+	logger.Info("lavalink track ended", slog.Any("event", event))
 	if !event.Reason.MayStartNext() {
 		return
 	}
@@ -134,6 +134,7 @@ func (b *MusicBot) onTrackEnd(player disgolink.Player, event lavalink.TrackEndEv
 	if err := player.Update(context.TODO(), lavalink.WithTrack(nextTrack)); err != nil {
 		logger.Error("Failed to play next track in queue", eris.Wrap(err, "failed to play next track in queue"))
 	}
+	logger.Info("Playing next track in queue", slog.String("title", nextTrack.Info.Title), slog.String("uri", *nextTrack.Info.URI))
 }
 
 func (b *MusicBot) onTrackException(player disgolink.Player, event lavalink.TrackExceptionEvent) {
