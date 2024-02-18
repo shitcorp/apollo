@@ -8,7 +8,7 @@ services:
     image: ghcr.io/lavalink-devs/lavalink:4
     container_name: lavalink
     environment:
-      _JAVA_OPTIONS: "-Xmx1G"
+      _JAVA_OPTIONS: "-Xmx500M"
       SERVER_PORT: "2333"
       # do not change this
       LAVALINK_SERVER_PASSWORD: "youshallnotpass"

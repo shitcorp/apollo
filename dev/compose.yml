@@ -6,7 +6,7 @@ services:
     restart: unless-stopped
     environment:
       # set Java options here
-      _JAVA_OPTIONS: "-Xmx1G"
+      _JAVA_OPTIONS: "-Xmx500M"
       # set lavalink server port
       SERVER_PORT: "2333"
       # set password for lavalink
