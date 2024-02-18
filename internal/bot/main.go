@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -34,7 +35,7 @@ func Start() {
 	loadConfig()
 
 	// create new music bot
-	bot, err := NewMusicBot(k.String("DISCORD_TOKEN"))
+	bot, err := NewMusicBot(k.String("discord.token"))
 	if err != nil {
 		msg := "error while creating disgo client"
 		logger.Error(msg, eris.Wrap(err, msg))
@@ -49,13 +50,13 @@ func Start() {
 
 	guilds := []snowflake.ID{}
 
-	if k.Exists("GUILD_ID") {
-		id := k.Int64("GUILD_ID")
-		logger.Info("GUILD_ID is set, syncing only one guild", slog.Int64("GUILD_ID", id))
+	if k.Exists("guild.id") {
+		id := k.Int64("guild.id")
+		logger.Info("guild_id is set, syncing only one guild", slog.Int64("guild.id", id))
 
 		guilds = append(guilds, snowflake.ID(id))
 	} else {
-		logger.Info("GUILD_ID is not set, syncing all guilds")
+		logger.Info("guild.id is not set, syncing all guilds")
 	}
 
 	// sync commands to discord
@@ -93,9 +94,30 @@ func loadConfig() {
 
 	// Load environment variables.
 	if err := k.Load(env.Provider("", ".", func(str string) string {
-		return str
+		// convert env var names to lowercase and replace _ with .
+		// konaf is case sensitive
+		return strings.Replace(strings.ToLower(str), "_", ".", -1)
 	}), nil); err != nil {
 		msg := "error while loading environment variables"
 		logger.Error(msg, eris.Wrap(err, msg))
+	}
+
+	// Set default values
+	setDefaultConfig()
+}
+
+func setDefaultConfig() {
+	// Set default config values
+
+	// lavalink stuff
+	if !k.Exists("lavalink.node.name") {
+		k.Set("lavalink.node.name", "default")
+	}
+	if !k.Exists("lavalink.node.address") {
+		logger.Warn("lavalink.node.address is not set, using default value", slog.String("lavalink.node.address", "localhost:2333"))
+		k.Set("lavalink.node.address", "localhost:2333")
+	}
+	if !k.Exists("lavalink.node.password") {
+		k.Set("lavalink.node.password", "youshallnotpass")
 	}
 }
