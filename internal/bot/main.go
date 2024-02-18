@@ -47,8 +47,19 @@ func Start() {
 		logger.Error("error while starting bot", err)
 	}
 
+	guilds := []snowflake.ID{}
+
+	if k.Exists("GUILD_ID") {
+		id := k.Int64("GUILD_ID")
+		logger.Info("GUILD_ID is set, syncing only one guild", slog.Int64("GUILD_ID", id))
+
+		guilds = append(guilds, snowflake.ID(id))
+	} else {
+		logger.Info("GUILD_ID is not set, syncing all guilds")
+	}
+
 	// sync commands to discord
-	err = bot.Sync(ctx, []snowflake.ID{492075852071174144})
+	err = bot.Sync(ctx, guilds)
 	if err != nil {
 		logger.Error("error while syncing guilds", err)
 	}
