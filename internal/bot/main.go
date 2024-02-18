@@ -34,7 +34,7 @@ func Start() {
 	loadConfig()
 
 	// create new music bot
-	bot, err := NewMusicBot(k.String("TOKEN"))
+	bot, err := NewMusicBot(k.String("DISCORD_TOKEN"))
 	if err != nil {
 		msg := "error while creating disgo client"
 		logger.Error(msg, eris.Wrap(err, msg))
