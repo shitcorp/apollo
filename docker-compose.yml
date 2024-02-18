@@ -1,0 +1,14 @@
+services:
+  apollo:
+    image: ghcr.io/shitcorp/apollo
+    environment:
+      DISCORD_TOKEN: "your token here"
+
+  lavalink:
+    image: ghcr.io/lavalink-devs/lavalink:4
+    container_name: lavalink
+    environment:
+      _JAVA_OPTIONS: "-Xmx1G"
+      SERVER_PORT: "2333"
+      # do not change this
+      LAVALINK_SERVER_PASSWORD: "youshallnotpass"
