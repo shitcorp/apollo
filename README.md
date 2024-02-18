@@ -20,3 +20,6 @@ All of the configuration is done using environment variables.
 ### Optional
 
 - `GUILD_ID` - The ID of the guild you want the bot to sync commands to. (Likely only required if you are developing the bot)
+- `LAVALINK_NODE_ADDRESS` - The address of the Lavalink server to connect to. (Defaults to `localhost:2333`)
+- `LAVALINK_NODE_PASSWORD` - The password for the Lavalink server. (Defaults to `youshallnotpass`)
+- `LAVALINK_NODE_NAME` - The name of the Lavalink node. (Defaults to `default`)

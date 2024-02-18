@@ -183,9 +183,9 @@ func (b *MusicBot) Start(ctx context.Context) error {
 	// defer b.Client.Close(ctx)
 
 	node, err := b.Lavalink.AddNode(ctx, disgolink.NodeConfig{
-		Name:     "test",
-		Address:  "localhost:2333",
-		Password: "youshallnotpass",
+		Name:     k.String("lavalink.node.name"),
+		Address:  k.String("lavalink.node.address"),
+		Password: k.String("lavalink.node.password"),
 		Secure:   false,
 	})
 	if err != nil {
